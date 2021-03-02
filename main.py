@@ -8,10 +8,10 @@ def checkX(x):
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    maxFeedBack = 600  # מקסימום פידבקים
+    maxFeedBack = 700  # מקסימום פידבקים
     minFeedBack = 10  # מינימום פידבקים
-    minSales = 50  # מינימום מכירות
-    maxSales = 2000 # מקסימום מכירות
+    minSales = 60  # מינימום מכירות
+    maxSales = 4000 # מקסימום מכירות
     minWeekSales = 7  # מינימום מחירות לשבוע
     ebayScraper = EbayScraper(maxFeedBack, minFeedBack, maxSales, minSales, minWeekSales)
     ebayScraper.startScraping()

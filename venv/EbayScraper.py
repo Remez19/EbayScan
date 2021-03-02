@@ -53,7 +53,6 @@ class EbayScraper:
 
     # Creates a thread for each 4 links we have
     def checkConditions(self):
-        linklst = []
         i = 0
         # creating list that containd lists of pages -> [[1,2,3],[1,2,3],[1,2,3]]
         self.linkList = [page for page in self.linkList if page is not '\n']
@@ -69,8 +68,8 @@ class EbayScraper:
         for thread in Threads:
             thread.join()
         endTime = time.time()
-        print('#####  '+ str(endTime - startTime)+ '  ####')
-
+        print('#####  '+ str((endTime - startTime)/60)+ '  ####')
+        print(len(self.resultLinks))
         # Creating a file that contains all links of hot products
         if len(self.resultLinks) > 0:
             fileName = str(input('שם קובץ של מוצרים חמים:')) + '.txt'
@@ -78,7 +77,7 @@ class EbayScraper:
                 i = 0
                 for link in self.resultLinks:
                     i = i + 1
-                    file.write(str(i) + '.) '+ link + '\n')
+                    file.write(str(i) + '.) '+ str(link) + '\n')
         else:
             print("לא נמצאו לינקים של מוצרים חמים!")
 
@@ -89,7 +88,8 @@ class EbayScraper:
         soup = BeautifulSoup(html, features="html.parser")
         for div in soup.find_all('div', class_= "s-item__image"):
             link = div.find('a').get('href')
-            if self.getLinkdata(link):
+            link = self.getLinkdata(link)
+            if link is not None:
                 linkLst.append(link)
         return linkLst
 
@@ -101,9 +101,11 @@ class EbayScraper:
             score = div.find('span', attrs={'class': 'mbg-l'}).text
             score = int(re.sub('[ ()'
                                ']', '', score))
-            if (int(self.minFeedBack) <= score <= int(self.maxFeedBack)) and self.CheckBidStatuse(soup):
-                return True
-        return False
+            weekSales = self.CheckBidStatuse(soup)
+            if (int(self.minFeedBack) <= score <= int(self.maxFeedBack)) and weekSales != None:
+                if weekSales >= self.minWeekSales:
+                    return (link, weekSales)
+        return None
 
 
 
@@ -112,6 +114,7 @@ class EbayScraper:
         soup = BeautifulSoup(r.content, features="html.parser")
         timeNow = datetime.now().__format__('%b-%d-%y %H:%M:%S')
         timeNow = datetime.strptime(timeNow, '%b-%d-%y %H:%M:%S')
+        answerFalag = False
         sumWeekSales = 0
         for td in soup.find_all('td', attrs={'align':'left', 'nowrap':False, 'class': 'contentValueFont'}):
             prodDateSale = td.text
@@ -119,11 +122,9 @@ class EbayScraper:
             prodDateSale = datetime.strptime(prodDateSale, '%b-%d-%y %H:%M:%S')
             if (timeNow - prodDateSale).days < 7:
                 sumWeekSales = sumWeekSales + 1
-                if sumWeekSales >= self.minWeekSales:
-                    return True
             else:
-                return False
-        return False
+                break
+        return sumWeekSales
 
 
     def connectionChecker(self,link):
@@ -163,7 +164,8 @@ class EbayScraper:
              score = div.find('a')
              if score is not None:
                  score = score.text
-                 score = float(re.sub(' sold','', score))
+                 score = re.sub(' sold','', score)
+                 score = float(re.sub(',','', score))
                  if self.maxSales > self.minSales and (self.minSales <= score <= self.maxSales) :
                      return self.checkLastWeekSales(link)
-        return False
+        return None
