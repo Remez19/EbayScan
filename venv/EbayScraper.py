@@ -57,7 +57,7 @@ class EbayScraper:
         i = 0
         # creating list that containd lists of pages -> [[1,2,3],[1,2,3],[1,2,3]]
         self.linkList = [page for page in self.linkList if page is not '\n']
-        pagesLinksList = np.array_split(self.linkList, 15)
+        pagesLinksList = np.array_split(self.linkList, 3)
         # Using multi - threading each thread gets 2 pages
         Threads = []
         for i in range(len(pagesLinksList)):
