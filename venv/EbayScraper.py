@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 import requests
 import time
 import re
+import random
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from datetime import datetime
@@ -53,15 +54,15 @@ class EbayScraper:
 
     # Creates a thread for each 4 links we have
     def checkConditions(self):
-        i = 0
         # creating list that containd lists of pages -> [[1,2,3],[1,2,3],[1,2,3]]
         self.linkList = [page for page in self.linkList if page is not '\n']
-        pagesLinksList = np.array_split(self.linkList, 3)
+        pagesLinksList = np.array_split(self.linkList, len(self.linkList))
         # Using multi - threading each thread gets 2 pages
         Threads = []
-        for i in range(len(pagesLinksList)):
-            name = 'Thread ' + str(i+1) + ':'
-            Threads.append(Thread(target=self.threadFunction, args=(pagesLinksList[i], name)))
+        threadID = 0
+        for page in pagesLinksList:
+            threadID += 1
+            Threads.append(Thread(target=self.threadFunction, args=(page,threadID)))
         startTime = time.time()
         for thread in Threads:
             thread.start()
@@ -69,17 +70,6 @@ class EbayScraper:
             thread.join()
         endTime = time.time()
         print('#####  '+ str((endTime - startTime)/60)+ '  ####')
-        print(len(self.resultLinks))
-        # Creating a file that contains all links of hot products
-        if len(self.resultLinks) > 0:
-            fileName = str(input('שם קובץ של מוצרים חמים:')) + '.txt'
-            with open(fileName,'a') as file:
-                i = 0
-                for link in self.resultLinks:
-                    i = i + 1
-                    file.write(str(i) + '.) '+ str(link) + '\n')
-        else:
-            print("לא נמצאו לינקים של מוצרים חמים!")
 
 
 
@@ -101,9 +91,9 @@ class EbayScraper:
             score = div.find('span', attrs={'class': 'mbg-l'}).text
             score = int(re.sub('[ ()'
                                ']', '', score))
-            weekSales = self.CheckBidStatuse(soup)
-            if (int(self.minFeedBack) <= score <= int(self.maxFeedBack)) and weekSales != None:
-                if weekSales >= self.minWeekSales:
+            if (int(self.minFeedBack) <= score <= int(self.maxFeedBack)):
+                weekSales = self.CheckSalesNumber(soup)
+                if weekSales is not None and weekSales >= self.minWeekSales:
                     return (link, weekSales)
         return None
 
@@ -118,7 +108,8 @@ class EbayScraper:
         sumWeekSales = 0
         for td in soup.find_all('td', attrs={'align':'left', 'nowrap':False, 'class': 'contentValueFont'}):
             prodDateSale = td.text
-            prodDateSale = re.sub(' PST', '', prodDateSale)
+            prodDateSale = prodDateSale.split(" ")
+            prodDateSale = prodDateSale[0] + ' ' + prodDateSale[1]
             prodDateSale = datetime.strptime(prodDateSale, '%b-%d-%y %H:%M:%S')
             if (timeNow - prodDateSale).days < 7:
                 sumWeekSales = sumWeekSales + 1
@@ -130,33 +121,31 @@ class EbayScraper:
     def connectionChecker(self,link):
         try:
             session = requests.Session()
-            retry = Retry(connect=3, backoff_factor=0.5)
+            retry = Retry(connect=5, backoff_factor=0.5)
             adapter = HTTPAdapter(max_retries=retry)
             session.mount('http://', adapter)
             session.mount('https://', adapter)
             return session.get(link)
-        except requests.exceptions.ConnectionError:
-
+        except Exception:
+            print("Heyyyyy")
             return None
 
-    def threadFunction(self,links,name):
+    def threadFunction(self,links,threadID):
         resltLink = []
         for link in links:  # pages links
             resltLink = self.checkFeedBack(link)
             if len(resltLink) > 0:
                 sem.acquire()
+                print('Hello from thread: ' + str(threadID))
                 for link in resltLink:
+                    print(link)
                     self.resultLinks.append(link)
                 resltLink = []
                 sem.release()
 
 
 
-
-
-
-
-    def CheckBidStatuse(self, soup):
+    def CheckSalesNumber(self, soup):
         for div in soup.find_all('div', attrs={'class': 'vi-quantity-wrapper'}):
              link = div.find('a', attrs={'class': 'vi-txt-underline'})
              if link is not None:
