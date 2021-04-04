@@ -29,8 +29,8 @@ class EbayScraper:
         self.linkList = []
         self.resultLinks = []
         self.ThreadNum = 10
-        self.numPages = 5 # מס' עמודים לחיפוש פר לינק
-        self.pagesToSearch = [ 'https://www.ebay.com/sch/i.html?_from=R40&_sacat=0&LH_TitleDesc=0&LH_BIN=1&_nkw=antenna&_pgn=' ]
+        self.numPages = 10 # מס' עמודים לחיפוש פר לינק
+        self.pagesToSearch = [ 'https://www.ebay.com/sch/i.html?_from=R40&_nkw=led&_sacat=0&LH_TitleDesc=0&LH_BIN=1&_pgn=' ]
         self.currentDateStr = datetime.now().__format__('%b-%d-%y')
         self.currentDate = datetime.now()
         self.currencyCheck = CurrencyConverter()
