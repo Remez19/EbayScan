@@ -18,6 +18,7 @@ if __name__ == '__main__':
             for link in ebayScraper.resultLinks:
                 file.write(str(link.link) + '###' + str(link.weekSales) + '###' + str(ebayScraper.currentDate))
             print("COMPLETE")
+            print("COMPLETE")
 
 
 
