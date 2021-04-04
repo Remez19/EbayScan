@@ -105,7 +105,6 @@ class EbayScraper:
                       ', Ali_Seller, In_My_Store_Or_Not, My_Salles, Link_In_My_Store)' \
                       'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
         selectQuery = 'SELECT [Link] FROM [Ebay].[dbo].[EbayData]'
-        selectQuery = 'SELECT [Link] FROM [Ebay].[dbo].[EbayData]'
         dbLinks = selectFromDB(dataBaseCon=self.dataBaseCon, selectQuery=selectQuery)
         for link in dbLinks:
             link = link[0]
@@ -114,7 +113,7 @@ class EbayScraper:
                 link.setRunTime(runTime)
                 insertToDB(dataBaseCon=self.dataBaseCon, data=link.getLink(), insertQuery=insertQuery)
             else:
-                print(link + ' EXISTING')
+                print('EXISTING')
 
     def checkFeedBack(self, html):
         linkLst = []
