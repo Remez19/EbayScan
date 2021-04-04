@@ -108,10 +108,12 @@ class EbayScraper:
         dbLinks = selectFromDB(dataBaseCon=self.dataBaseCon, selectQuery=selectQuery)
         for link in dbLinks:
             link = link[0]
+
         for link in self.resultLinks:
-            if link not in dbLinks:
+            if not any(link.link in s for s in dbLinks):
                 link.setRunTime(runTime)
                 insertToDB(dataBaseCon=self.dataBaseCon, data=link.getLink(), insertQuery=insertQuery)
+                print('INSERT')
             else:
                 print('EXISTING')
 
