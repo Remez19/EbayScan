@@ -198,11 +198,6 @@ class EbayScraper:
             try:
                 for td in soup.find_all('td', attrs={'align': 'left', 'nowrap': False, 'class': 'contentValueFont'}):
                     prodDateSale = parser.parse(td.text,ignoretz= True)
-                    # prodDateSale = prodDateSale.split(" ")
-                    # prodDateSale = prodDateSale[0] + ' ' + prodDateSale[1]
-                    # prodDateSale = prodDateSale[:prodDateSale.find(' ')]
-                    # pt = prodDateSale.replace(' ', '')
-                    # prodDateSale = parser.parse(pt)
                     if (self.currentDate - prodDateSale).days < 7:
                         sumWeekSales = sumWeekSales + 1
                     else:
@@ -226,12 +221,16 @@ class EbayScraper:
             session.mount('https://', adapter)
             if head:
                 r = session.get(link, headers=headers, timeout=5)
-                return r
+                if r.status_code > 400:
+                    raise ValueError
             else:
                 r = session.get(link)
-                return r
-        except Exception:
+                if r.status_code > 400:
+                    raise ValueError
+            return r
+        except Exception as e:
             print("Connection Failure")
+            print(f"Status Code:{r.status_code}")
             return None
 
     def threadFunction(self,links,threadID):
