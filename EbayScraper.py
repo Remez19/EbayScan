@@ -7,17 +7,17 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from datetime import datetime
 import threading
-from threading import Thread,Semaphore
+from threading import Thread, Semaphore
 import numpy as np
-from Utils import connectToDB, insertToDB
+from Utils import connectToDB, insertToDB, selectFromDB
 from dateutil import parser
 from currency_converter import CurrencyConverter
 
-
 sem = threading.Semaphore()
 
+
 class EbayScraper:
-    def __init__(self, maxFeedBack, minFeedBack, maxSales, minSales, minWeekSales, minPrice,maxPrice):
+    def __init__(self, maxFeedBack, minFeedBack, maxSales, minSales, minWeekSales, minPrice, maxPrice):
         self.dataBaseCon = connectToDB('LAPTOP-VNSLHC31', 'Ebay')
         self.maxFeedBack = maxFeedBack
         self.minFeedBack = minFeedBack
@@ -29,8 +29,9 @@ class EbayScraper:
         self.linkList = []
         self.resultLinks = []
         self.ThreadNum = 10
-        self.numPages = 10 # מס' עמודים לחיפוש פר לינק
-        self.pagesToSearch = [ 'https://www.ebay.com/sch/i.html?_from=R40&_nkw=led&_sacat=0&LH_TitleDesc=0&LH_BIN=1&_pgn=' ]
+        self.numPages = 1  # מס' עמודים לחיפוש פר לינק
+        self.pagesToSearch = [
+            'https://www.ebay.com/sch/i.html?_from=R40&_nkw=led&_sacat=0&LH_TitleDesc=0&LH_BIN=1&_pgn=']
         self.currentDateStr = datetime.now().__format__('%b-%d-%y')
         self.currentDate = datetime.now()
         self.currencyCheck = CurrencyConverter()
@@ -45,12 +46,10 @@ class EbayScraper:
             with open("html.txt", 'r', encoding='utf8') as pagesLink:
                 self.per_section(pagesLink, lambda line: line.startswith('<!DOCTYPE html>'))  # comment
 
-
-
     def createPagesLinks(self):
         for link in self.pagesToSearch:
             for i in range(self.numPages):
-                l = link + str(i+1)
+                l = link + str(i + 1)
                 print(l)
                 r = self.connectionChecker(l, True)
                 if r:
@@ -78,10 +77,8 @@ class EbayScraper:
             page = page + l + "" + '\n'
         self.linkList.append(page)
 
-
     def startScraping(self):
         self.checkConditions()
-
 
     # Creates a thread for each 4 links we have
     def checkConditions(self):
@@ -93,7 +90,7 @@ class EbayScraper:
         threadID = 0
         for page in pagesLinksList:
             threadID += 1
-            Threads.append(Thread(target=self.threadFunction, args=(page,threadID)))
+            Threads.append(Thread(target=self.threadFunction, args=(page, threadID)))
         startTime = time.time()
         for thread in Threads:
             thread.start()
@@ -101,29 +98,30 @@ class EbayScraper:
             thread.join()
         endTime = time.time()
         runTime = str((endTime - startTime) / 60)
-        print('#####  ' + runTime+ '  ####')
+        print('#####  ' + runTime + '  ####')
         print('--------------------')
         insertQuery = 'INSERT INTO EbayData (Link, Sales_Total, Week_Sales, Check_Date, Seller_Name, ' \
                       'Seller_Link, Seller_FeedBacks, Prod_Name, Prod_Price, Prod_Shipping_Price, Run_Time, Prod_Img' \
                       ', Ali_Seller, In_My_Store_Or_Not, My_Salles, Link_In_My_Store)' \
                       'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
+        selectQuery = 'SELECT [Link] FROM [Ebay].[dbo].[EbayData]'
+        selectQuery = 'SELECT [Link] FROM [Ebay].[dbo].[EbayData]'
+        dbLinks = selectFromDB(dataBaseCon=self.dataBaseCon, selectQuery=selectQuery)
+        for link in dbLinks:
+            link = link[0]
         for link in self.resultLinks:
-            link.setRunTime(runTime)
-            insertToDB(dataBaseCon=self.dataBaseCon, data=link.getLink(), insertQuery=insertQuery)
-            link.getLinkDetails()
-            print('--------------------')
+            if link not in dbLinks:
+                link.setRunTime(runTime)
+                insertToDB(dataBaseCon=self.dataBaseCon, data=link.getLink(), insertQuery=insertQuery)
+            else:
+                print(link + ' EXISTING')
 
-
-
-
-
-
-    def checkFeedBack(self,html):
+    def checkFeedBack(self, html):
         linkLst = []
         prodName = str(html)
-        prodName = prodName[prodName.find('<title>')+7:prodName.find(' | ')]
+        prodName = prodName[prodName.find('<title>') + 7:prodName.find(' | ')]
         soup = BeautifulSoup(html, features="html.parser")
-        for div in soup.find_all('div', class_= "s-item__image"):
+        for div in soup.find_all('div', class_="s-item__image"):
             link = div.find('a').get('href')
             link = self.getLinkdata(link, prodName)
             if link is not None:
@@ -145,7 +143,8 @@ class EbayScraper:
                         sales, weekSales = result
                         if weekSales >= self.minWeekSales:
                             sellerLink = \
-                            soup.find('div', attrs={'class': 'si-pd-a', 'style': 'overflow: hidden;'}).find('a')['href']
+                                soup.find('div', attrs={'class': 'si-pd-a', 'style': 'overflow: hidden;'}).find('a')[
+                                    'href']
                             sellerName = div.find('span', attrs={'class': 'mbg-nw'}).text
                             prodPrice = soup.find('span', attrs={'class': 'notranslate'}).text
                             currencyCode = prodPrice[:prodPrice.find(' ')]
@@ -190,14 +189,14 @@ class EbayScraper:
                                             prodPrice=prodPrice)
         return None
 
-    def checkLastWeekSales(self,link):
+    def checkLastWeekSales(self, link):
         r = self.connectionChecker(link)
         if r:
             soup = BeautifulSoup(r.content, features="html.parser")
             sumWeekSales = 0
             try:
                 for td in soup.find_all('td', attrs={'align': 'left', 'nowrap': False, 'class': 'contentValueFont'}):
-                    prodDateSale = parser.parse(td.text,ignoretz= True)
+                    prodDateSale = parser.parse(td.text, ignoretz=True)
                     if (self.currentDate - prodDateSale).days < 7:
                         sumWeekSales = sumWeekSales + 1
                     else:
@@ -207,13 +206,11 @@ class EbayScraper:
                 print(e)
             return sumWeekSales
 
-
-
-    def connectionChecker(self, link, head = False):
+    def connectionChecker(self, link, head=False):
         try:
             headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36"
-                          }
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36"
+            }
             session = requests.Session()
             retry = Retry(connect=5, backoff_factor=0.5)
             adapter = HTTPAdapter(max_retries=retry)
@@ -233,30 +230,28 @@ class EbayScraper:
             print(f"Status Code:{r.status_code}")
             return None
 
-    def threadFunction(self,links,threadID):
+    def threadFunction(self, links, threadID):
         resltLink = []
         for link in links:  # pages links
             resltLink = self.checkFeedBack(link)
             if len(resltLink) > 0:
                 sem.acquire()
                 for link in resltLink:
+                    print(link.link)
                     self.resultLinks.append(link)
                 resltLink = []
                 sem.release()
 
-
-
-
     def CheckSalesNumber(self, soup):
         for div in soup.find_all('div', attrs={'class': 'vi-quantity-wrapper'}):
-             link = div.find('a', attrs={'class': 'vi-txt-underline'})
-             if link is not None:
-                 link = link.get('href')
-             salses = div.find('a')
-             if salses is not None:
-                 salses = salses.text
-                 salses = re.sub('[^0-9,]','', salses)
-                 salses = int(re.sub(',','', salses))
-                 if self.maxSales > self.minSales and (self.minSales <= salses <= self.maxSales) :
-                     return (salses, self.checkLastWeekSales(link))
+            link = div.find('a', attrs={'class': 'vi-txt-underline'})
+            if link is not None:
+                link = link.get('href')
+            salses = div.find('a')
+            if salses is not None:
+                salses = salses.text
+                salses = re.sub('[^0-9,]', '', salses)
+                salses = int(re.sub(',', '', salses))
+                if self.maxSales > self.minSales and (self.minSales <= salses <= self.maxSales):
+                    return (salses, self.checkLastWeekSales(link))
         return None
