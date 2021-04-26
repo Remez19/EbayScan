@@ -1,3 +1,5 @@
+import threading
+from threading import Thread, Semaphore
 from bs4 import BeautifulSoup
 import requests
 import time
@@ -6,18 +8,18 @@ from Link import Link
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from datetime import datetime
-import threading
-from threading import Thread, Semaphore
 import numpy as np
+import concurrent.futures
+import signal
 from Utils import connectToDB, insertToDB, selectFromDB
 from dateutil import parser
 from currency_converter import CurrencyConverter
 
 sem = threading.Semaphore()
 
-
 class EbayScraper:
-    def __init__(self, maxFeedBack, minFeedBack, maxSales, minSales, minWeekSales, minPrice, maxPrice):
+    def __init__(self, maxFeedBack, minFeedBack, maxSales, minSales, minWeekSales, minPrice, maxPrice, pagesToSearch,
+                 numPages, numThreads):
         self.dataBaseCon = connectToDB('LAPTOP-VNSLHC31', 'Ebay')
         self.maxFeedBack = maxFeedBack
         self.minFeedBack = minFeedBack
@@ -28,62 +30,28 @@ class EbayScraper:
         self.maxPrice = maxPrice
         self.linkList = []
         self.resultLinks = []
-        self.ThreadNum = 10
-        self.numPages = 1  # מס' עמודים לחיפוש פר לינק
-        self.pagesToSearch = [
-            'https://www.ebay.com/sch/i.html?_from=R40&_nkw=led&_sacat=0&LH_TitleDesc=0&LH_BIN=1&_pgn=']
+        self.ThreadNum = numThreads
+        self.numPages = numPages  # מס' עמודים לחיפוש פר לינק
+        self.pagesToSearch = pagesToSearch
         self.currentDateStr = datetime.now().__format__('%b-%d-%y')
         self.currentDate = datetime.now()
         self.currencyCheck = CurrencyConverter()
-        userOperation = int(input("תלחץ 1 לחיפוש לפי דפים. תלחץ 2 לקובץ:"))
-        while userOperation != 1 and userOperation != 2:
-            self.ThreadNum = int(input("תלחץ 1 לחיפוש לפי דפים. תלחץ 2 לקובץ:"))
-        if userOperation == 1:
-            self.ThreadNum = int(input("הכנס מס' של חוטים:"))
-            self.createPagesLinks()
-        if userOperation == 2:
-            self.ThreadNum = int(input("הכנס מס' של חוטים:"))
-            with open("html.txt", 'r', encoding='utf8') as pagesLink:
-                self.per_section(pagesLink, lambda line: line.startswith('<!DOCTYPE html>'))  # comment
+        self.createPagesLinks()
 
     def createPagesLinks(self):
         for link in self.pagesToSearch:
             for i in range(self.numPages):
-                l = link + str(i + 1)
-                print(l)
-                r = self.connectionChecker(l, True)
+                p = link + str(i + 1)
+                print(p)
+                r = self.connectionChecker(p, True)
                 if r:
-                    self.linkList.append(r.content)
-
-    def per_section(self, file, is_delimiter):
-        ret = []
-        flagStart = True
-        page = ''
-        for line in file:
-            if is_delimiter(line) and flagStart is False:
-                if ret:
-                    flagStart = True
-                    page = ''
-                    for l in ret:
-                        page = page + l + "" + '\n'
-                    self.linkList.append(page)
-                    ret = []
-                    ret.append(line.rstrip())
-            else:
-                flagStart = False
-                ret.append(line.rstrip())  # OR  ret.append(line)
-        page = ''
-        for l in ret:
-            page = page + l + "" + '\n'
-        self.linkList.append(page)
+                    self.linkList.append(r)
 
     def startScraping(self):
         self.checkConditions()
 
     # Creates a thread for each 4 links we have
     def checkConditions(self):
-        # creating list that containd lists of pages -> [[1,2,3],[1,2,3],[1,2,3]]
-        self.linkList = [page for page in self.linkList if page is not '\n']
         pagesLinksList = np.array_split(self.linkList, self.ThreadNum)
         # Using multi - threading
         Threads = []
@@ -101,21 +69,43 @@ class EbayScraper:
         print('#####  ' + runTime + '  ####')
         print('--------------------')
         insertQuery = 'INSERT INTO EbayData (Link, Sales_Total, Week_Sales, Check_Date, Seller_Name, ' \
-                      'Seller_Link, Seller_FeedBacks, Prod_Name, Prod_Price, Prod_Shipping_Price, Run_Time, Prod_Img' \
+                      'Seller_Link, Seller_FeedBacks, Prod_Name, Prod_Price, Prod_Shipping_Price, Run_Time, Search_Link, Ali_Price' \
                       ', Ali_Seller, In_My_Store_Or_Not, My_Salles, Link_In_My_Store)' \
-                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
-        selectQuery = 'SELECT [Link] FROM [Ebay].[dbo].[EbayData]'
-        dbLinks = selectFromDB(dataBaseCon=self.dataBaseCon, selectQuery=selectQuery)
-        for link in dbLinks:
-            link = link[0]
-
+                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
         for link in self.resultLinks:
-            if not any(link.link in s for s in dbLinks):
-                link.setRunTime(runTime)
-                insertToDB(dataBaseCon=self.dataBaseCon, data=link.getLink(), insertQuery=insertQuery)
-                print('INSERT')
-            else:
-                print('EXISTING')
+            link.setRunTime(runTime)
+            insertToDB(dataBaseCon=self.dataBaseCon, data=tuple(link.getLink()), insertQuery=insertQuery)
+            link.getLinkDetails()
+            print('--------------------')
+
+
+        # with concurrent.futures.ThreadPoolExecutor() as executor:
+        #     startTime = time.time()
+        #     res = [executor.submit(self.threadFunction, page) for page in pagesLinksList]
+        #     for res in concurrent.futures.as_completed(res):
+        #         for link in res:
+        #             self.resultLinks.append(link)
+        #     # self.resultLinks = [item for sublist in self.resultLinks for item in sublist if item]
+        #     endTime = time.time()
+        #     runTime = str((endTime - startTime) / 60)
+        #     print('#####  ' + runTime + '  ####')
+        #     print('--------------------')
+        #     insertQuery = 'INSERT INTO EbayData (Link, Sales_Total, Week_Sales, Check_Date, Seller_Name, ' \
+        #                   'Seller_Link, Seller_FeedBacks, Prod_Name, Prod_Price, Prod_Shipping_Price, Run_Time, Prod_Img' \
+        #                   ', Ali_Seller, In_My_Store_Or_Not, My_Salles, Link_In_My_Store)' \
+        #                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
+        #     selectQuery = 'SELECT [Link] FROM [Ebay].[dbo].[EbayData]'
+        #     dbLinks = selectFromDB(dataBaseCon=self.dataBaseCon, selectQuery=selectQuery)
+        #     for link in dbLinks:
+        #         link = link[0]
+        #
+        #     for link in self.resultLinks:
+        #         if not any(link.link in s for s in dbLinks):
+        #             link.setRunTime(runTime)
+        #             insertToDB(dataBaseCon=self.dataBaseCon, data=link.getLink(), insertQuery=insertQuery)
+        #             print('INSERT')
+        #         else:
+        #             print('EXISTING')
 
     def checkFeedBack(self, html):
         linkLst = []
@@ -208,6 +198,7 @@ class EbayScraper:
             return sumWeekSales
 
     def connectionChecker(self, link, head=False):
+        r = None
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36"
@@ -228,20 +219,22 @@ class EbayScraper:
             return r
         except Exception as e:
             print("Connection Failure")
-            print(f"Status Code:{r.status_code}")
+            if r:
+                print(f"Status Code:{r.status_code}")
             return None
 
     def threadFunction(self, links, threadID):
         resltLink = []
         for link in links:  # pages links
-            resltLink = self.checkFeedBack(link)
+            resltLink = self.checkFeedBack(link.content)
             if len(resltLink) > 0:
                 sem.acquire()
-                for link in resltLink:
-                    print(link.link)
-                    self.resultLinks.append(link)
+                for resLink in resltLink:
+                    resLink.setSearchLink(link.url)
+                    self.resultLinks.append(resLink)
                 resltLink = []
                 sem.release()
+
 
     def CheckSalesNumber(self, soup):
         for div in soup.find_all('div', attrs={'class': 'vi-quantity-wrapper'}):
@@ -254,5 +247,5 @@ class EbayScraper:
                 salses = re.sub('[^0-9,]', '', salses)
                 salses = int(re.sub(',', '', salses))
                 if self.maxSales > self.minSales and (self.minSales <= salses <= self.maxSales):
-                    return (salses, self.checkLastWeekSales(link))
+                    return salses, self.checkLastWeekSales(link)
         return None
