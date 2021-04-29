@@ -161,7 +161,7 @@ class MainWindow(qtw.QMainWindow, Ui_MainWindow):
             minWeekSales = int(self.minWeekSalesInput.text())
             maxPrice = int(self.maxPriceInput.text())
             minPrice = int(self.minPriceInput.text())
-            pagesToSearch = 'https://www.ebay.com/sch/i.html?_from=R40&_nkw=LED+fountain&_sacat=0&LH_TitleDesc=0&_udlo=15&LH_BIN=1&_ipg=200&_pgn=1'
+            pagesToSearch = self.runLinkList.toPlainText().split('\n')
             numPages = int(self.numPagesInput.text())
             numThreads = int(self.numThreadInput.text())
         except Exception as e:
