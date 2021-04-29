@@ -11,16 +11,16 @@ from datetime import datetime
 import numpy as np
 import concurrent.futures
 import signal
-from Utils import connectToDB, insertToDB, selectFromDB
+from Utils import insertToDB, selectFromDB
 from dateutil import parser
 from currency_converter import CurrencyConverter
 
 sem = threading.Semaphore()
 
 class EbayScraper:
-    def __init__(self, maxFeedBack, minFeedBack, maxSales, minSales, minWeekSales, minPrice, maxPrice, pagesToSearch,
+    def __init__(self, dataBaseCon, maxFeedBack, minFeedBack, maxSales, minSales, minWeekSales, minPrice, maxPrice, pagesToSearch,
                  numPages, numThreads):
-        self.dataBaseCon = connectToDB('LAPTOP-VNSLHC31', 'Ebay')
+        self.dataBaseCon = dataBaseCon
         self.maxFeedBack = maxFeedBack
         self.minFeedBack = minFeedBack
         self.maxSales = maxSales
@@ -36,6 +36,11 @@ class EbayScraper:
         self.currentDateStr = datetime.now().__format__('%b-%d-%y')
         self.currentDate = datetime.now()
         self.currencyCheck = CurrencyConverter()
+        selectQuery = "SELECT Link FROM [Ebay].[dbo].[EbayData]"
+        self.Tablelinks = []
+        for link in selectFromDB(self.dataBaseCon, selectQuery):
+            self.Tablelinks.append(link[0])
+        self.Tablelinks = selectFromDB(self.dataBaseCon, selectQuery)
         self.createPagesLinks()
 
     def createPagesLinks(self):
@@ -74,9 +79,14 @@ class EbayScraper:
                       'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
         for link in self.resultLinks:
             link.setRunTime(runTime)
-            insertToDB(dataBaseCon=self.dataBaseCon, data=tuple(link.getLink()), insertQuery=insertQuery)
-            link.getLinkDetails()
+            if link.link not in self.Tablelinks:
+                insertToDB(dataBaseCon=self.dataBaseCon, data=tuple(link.getLink()), insertQuery=insertQuery)
+                link.getLinkDetails()
+                print("INSERT")
+            else:
+                print("EXIST")
             print('--------------------')
+
 
 
         # with concurrent.futures.ThreadPoolExecutor() as executor:
